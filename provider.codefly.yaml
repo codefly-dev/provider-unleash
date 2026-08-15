@@ -1,0 +1,361 @@
+schema_version: codefly.provider-manifest/v0
+protocol_version: codefly.provider/v0
+state_schema_versions: [1]
+agent:
+  kind: codefly:provider
+  publisher: codefly.dev
+  name: unleash
+  version: 0.1.0
+default_deletion_policy: retain
+
+permissions:
+  required:
+    - id: binding-observe
+      action: binding.observe
+      resource: "provider:unleash/${workspace}/${environment}/${binding}/${resource_type}"
+      resource_type: unleash.binding
+      reason: Observe only the declared Unleash project, environment, application, and API tokens.
+      risk: low
+      credential_purpose: management
+    - id: binding-create
+      action: binding.create
+      resource: "provider:unleash/${workspace}/${environment}/${binding}/${resource_type}"
+      resource_type: unleash.binding
+      reason: Create resources carrying the deterministic binding ownership stamp.
+      risk: high
+      credential_purpose: management
+    - id: binding-update
+      action: binding.update
+      resource: "provider:unleash/${workspace}/${environment}/${binding}/${resource_type}"
+      resource_type: unleash.binding
+      reason: Converge fields owned by the exact binding.
+      risk: high
+      credential_purpose: management
+    - id: binding-delete
+      action: binding.delete
+      resource: "provider:unleash/${workspace}/${environment}/${binding}/${resource_type}"
+      resource_type: unleash.binding
+      reason: Destroy exact owned resources only when delete-owned is explicit.
+      risk: critical
+      credential_purpose: management
+
+resource_types:
+  - id: unleash.binding
+    actions: [observe, create, update, delete, import, blocked, no-op]
+    import_identity: [resource_type, remote_id]
+    supports_delete: true
+  - id: project-output
+    actions: [project-output]
+
+requests:
+  - id: project.overview
+    permissions: [binding-observe]
+    resource_type: unleash.binding
+    action: observe
+    origin_rule: admin
+    operation: retrieve
+    method: GET
+    path_template: /api/admin/projects/{resource_id}/overview
+    remote_id_parameters: [resource_id]
+    request_byte_budget: 4096
+    response_byte_budget: 131072
+    read_only: true
+    response_schema: project_overview
+    credential_purposes: [management]
+  - id: environment.get
+    permissions: [binding-observe]
+    resource_type: unleash.binding
+    action: observe
+    origin_rule: admin
+    operation: retrieve
+    method: GET
+    path_template: /api/admin/environments/{resource_id}
+    remote_id_parameters: [resource_id]
+    request_byte_budget: 4096
+    response_byte_budget: 131072
+    read_only: true
+    response_schema: environment
+    credential_purposes: [management]
+  - id: application.get
+    permissions: [binding-observe]
+    resource_type: unleash.binding
+    action: observe
+    origin_rule: admin
+    operation: retrieve
+    method: GET
+    path_template: /api/admin/metrics/applications/{resource_id}
+    remote_id_parameters: [resource_id]
+    request_byte_budget: 4096
+    response_byte_budget: 262144
+    read_only: true
+    response_schema: application
+    credential_purposes: [management]
+  - id: token.get
+    permissions: [binding-observe]
+    resource_type: unleash.binding
+    action: observe
+    origin_rule: admin
+    operation: retrieve
+    method: GET
+    path_template: /api/admin/api-tokens/{resource_id}
+    remote_id_parameters: [resource_id]
+    request_byte_budget: 4096
+    response_byte_budget: 262144
+    read_only: true
+    response_schema: tokens
+    credential_purposes: [management]
+  - id: project.create
+    permissions: [binding-create]
+    resource_type: unleash.binding
+    action: create
+    origin_rule: admin
+    operation: create
+    method: POST
+    path_template: /api/admin/projects
+    allowed_body_fields: [id, name, description, mode, environments]
+    ownership_body_fields: [id]
+    request_byte_budget: 8192
+    response_byte_budget: 65536
+    read_only: false
+    response_schema: project
+    credential_purposes: [management]
+  - id: project.update
+    permissions: [binding-update]
+    resource_type: unleash.binding
+    action: update
+    origin_rule: admin
+    operation: update
+    method: PUT
+    path_template: /api/admin/projects/{resource_id}
+    remote_id_parameters: [resource_id]
+    allowed_body_fields: [name, description, mode]
+    request_byte_budget: 8192
+    response_byte_budget: 16384
+    read_only: false
+    response_schema: empty
+    credential_purposes: [management]
+  - id: project.delete
+    permissions: [binding-delete]
+    resource_type: unleash.binding
+    action: delete
+    origin_rule: admin
+    operation: delete
+    method: DELETE
+    path_template: /api/admin/projects/{resource_id}
+    remote_id_parameters: [resource_id]
+    request_byte_budget: 4096
+    response_byte_budget: 16384
+    read_only: false
+    response_schema: empty
+    credential_purposes: [management]
+  - id: environment.create
+    permissions: [binding-create]
+    resource_type: unleash.binding
+    action: create
+    origin_rule: admin
+    operation: create
+    method: POST
+    path_template: /api/admin/environments
+    allowed_body_fields: [name, type, enabled]
+    ownership_body_fields: [name]
+    request_byte_budget: 8192
+    response_byte_budget: 65536
+    read_only: false
+    response_schema: environment
+    credential_purposes: [management]
+  - id: project-environment.create
+    permissions: [binding-create]
+    resource_type: unleash.binding
+    action: create
+    origin_rule: admin
+    operation: create
+    method: POST
+    path_template: /api/admin/projects/{resource_id}/environments
+    remote_id_parameters: [resource_id]
+    allowed_body_fields: [environment]
+    request_byte_budget: 8192
+    response_byte_budget: 16384
+    read_only: false
+    response_schema: empty
+    credential_purposes: [management]
+  - id: application.create
+    permissions: [binding-create]
+    resource_type: unleash.binding
+    action: create
+    origin_rule: admin
+    operation: create
+    method: POST
+    path_template: /api/admin/metrics/applications/{resource_id}
+    remote_id_parameters: [resource_id]
+    allowed_body_fields: [strategies, url]
+    request_byte_budget: 8192
+    response_byte_budget: 16384
+    read_only: false
+    response_schema: empty
+    credential_purposes: [management]
+  - id: application.update
+    permissions: [binding-update]
+    resource_type: unleash.binding
+    action: update
+    origin_rule: admin
+    operation: update
+    method: POST
+    path_template: /api/admin/metrics/applications/{resource_id}
+    remote_id_parameters: [resource_id]
+    allowed_body_fields: [strategies, url]
+    request_byte_budget: 8192
+    response_byte_budget: 16384
+    read_only: false
+    response_schema: empty
+    credential_purposes: [management]
+  - id: application.delete
+    permissions: [binding-delete]
+    resource_type: unleash.binding
+    action: delete
+    origin_rule: admin
+    operation: delete
+    method: DELETE
+    path_template: /api/admin/metrics/applications/{resource_id}
+    remote_id_parameters: [resource_id]
+    request_byte_budget: 4096
+    response_byte_budget: 16384
+    read_only: false
+    response_schema: empty
+    credential_purposes: [management]
+  - id: token.create
+    permissions: [binding-create]
+    resource_type: unleash.binding
+    action: create
+    origin_rule: admin
+    operation: create
+    method: POST
+    path_template: /api/admin/api-tokens
+    allowed_body_fields: [type, tokenName, environment, projects]
+    ownership_body_fields: [tokenName]
+    request_byte_budget: 8192
+    response_byte_budget: 65536
+    read_only: false
+    response_schema: token_create
+    credential_purposes: [management]
+
+origin_rules:
+  - id: admin
+    defaults: [http://unleash:4242]
+    schemes: [http, https]
+    host_patterns: [unleash, localhost, "*.svc.cluster.local"]
+    ports: [4242]
+    binding_override: exact
+    private_network_classes: [loopback, private]
+  - id: server
+    defaults: [http://unleash:4242]
+    schemes: [http, https]
+    host_patterns: [unleash, localhost, "*.svc.cluster.local"]
+    ports: [4242]
+    binding_override: exact
+    private_network_classes: [loopback, private]
+  - id: edge
+    defaults: [http://unleash-edge:3063]
+    schemes: [http, https]
+    host_patterns: [unleash-edge, localhost, "*.svc.cluster.local"]
+    ports: [3063, 443]
+    binding_override: exact
+    private_network_classes: [public, loopback, private]
+
+credential_purposes:
+  - id: management
+    minimum_scope: Read and manage projects, environments, applications, and backend/frontend API tokens only.
+    permitted_consumer: management
+  - id: runtime
+    minimum_scope: Evaluate flags for one project and environment only.
+    permitted_consumer: runtime
+
+response_schemas:
+  - id: project_overview
+    fields:
+      - selector: {version: v1, path: "$.name"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.description"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.featureTypeCounts[*].count"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.environments[*].environment"}
+        disposition: FORWARD_SAFE
+  - id: application
+    fields:
+      - selector: {version: v1, path: "$.appName"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.url"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.strategies[*]"}
+        disposition: FORWARD_SAFE
+  - id: tokens
+    fields:
+      - selector: {version: v1, path: "$.tokens[*].tokenName"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.tokens[*].type"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.tokens[*].environment"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.tokens[*].projects[*]"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.tokens[*].createdAt"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.tokens[*].alias"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.tokens[*].secure"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.tokens[*].secret"}
+        disposition: SUPPRESS_REPORT_PRESENCE
+  - id: project
+    fields:
+      - selector: {version: v1, path: "$.id"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.name"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.description"}
+        disposition: FORWARD_SAFE
+  - id: environment
+    fields:
+      - selector: {version: v1, path: "$.name"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.type"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.enabled"}
+        disposition: FORWARD_SAFE
+  - id: token_create
+    fields:
+      - selector: {version: v1, path: "$.tokenName"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.type"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.environment"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.projects[*]"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.createdAt"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.alias"}
+        disposition: FORWARD_SAFE
+      - selector: {version: v1, path: "$.secret"}
+        disposition: CAPTURE_TO_SINK
+        purpose: runtime
+  - id: empty
+    fields:
+      - selector: {version: v1, path: "$.id"}
+        disposition: FORWARD_SAFE
+
+projections:
+  - id: feature-flags
+    contract: codefly.dev/configuration/feature-flags@1
+
+sandbox:
+  network: deny
+
+state:
+  schema_versions: [1]
+  import_identity: true
+  replace: false
+  delete: true
+  stepwise_upgrade: false
+
+diagnostic_namespace: provider.unleash.
