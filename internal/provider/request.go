@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net"
 	"strings"
 
 	basev0 "github.com/codefly-dev/core/generated/go/codefly/base/v0"
@@ -91,15 +90,6 @@ func endpointOrigins(providerContext *providerv0.ProviderContext) (map[string]*p
 		}
 	}
 	return origins, nil
-}
-
-func originString(origin *providerv0.AdmittedOrigin) string {
-	host := origin.GetHost()
-	port := origin.GetPort()
-	if port != 0 && !((origin.GetScheme() == "https" && port == 443) || (origin.GetScheme() == "http" && port == 80)) {
-		host = net.JoinHostPort(host, fmt.Sprint(port))
-	}
-	return origin.GetScheme() + "://" + host
 }
 
 func managementHandle(providerContext *providerv0.ProviderContext) (*providerv0.CredentialHandle, error) {

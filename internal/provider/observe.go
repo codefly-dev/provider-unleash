@@ -82,8 +82,8 @@ func (s *Server) Observe(ctx context.Context, request *providerv0.ObserveRequest
 		accountID = origins["admin"].GetHost()
 	}
 	resources := []*providerv0.MaterialResourceObservation{
-		endpointResource(accountID, "server", originString(origins["server"])+"/api/"),
-		endpointResource(accountID, "edge", originString(origins["edge"])+"/api/frontend"),
+		endpointResource(accountID, "server", endpointReference("server", "server")),
+		endpointResource(accountID, "edge", endpointReference("edge", "edge")),
 	}
 	complete := true
 	failedAt := ""
@@ -213,6 +213,10 @@ func (s *Server) Observe(ctx context.Context, request *providerv0.ObserveRequest
 func endpointResource(accountID, endpointID, value string) *providerv0.MaterialResourceObservation {
 	return observedResource(accountID, resourceEndpoint, endpointID, providerv0.Ownership_OWNERSHIP_OBSERVED,
 		map[string]*providerv0.PublicValue{"endpoint": publicString(value)})
+}
+
+func endpointReference(originRuleID, endpointID string) string {
+	return "endpoint://" + originRuleID + "/" + endpointID
 }
 
 func observedResource(accountID, resourceType, remoteID string, ownership providerv0.Ownership, fields map[string]*providerv0.PublicValue) *providerv0.MaterialResourceObservation {

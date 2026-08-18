@@ -177,8 +177,8 @@ func tokenCreateRequest(in inputs, marker, kind, tokenType string) (string, map[
 
 func (s *Server) applyOutput(ctx context.Context, request *providerv0.ApplyActionRequest) (*providerv0.ApplyActionResponse, error) {
 	proposal := request.GetAction().GetOutput()
-	if proposal == nil || proposal.GetContract() != featureFlagsContract {
-		return nil, status.Error(codes.FailedPrecondition, "project output is not feature-flags@1")
+	if proposal == nil || (proposal.GetContract() != featureFlagsContract && proposal.GetContract() != featureFlagsBrowserContract) {
+		return nil, status.Error(codes.FailedPrecondition, "project output is not an admitted feature flags contract")
 	}
 	response, err := s.host.ProposeOutput(ctx, &providerv0.ProposeOutputRequest{
 		Operation: request.GetContext().GetOperation(), Proposal: proposal,
@@ -187,7 +187,7 @@ func (s *Server) applyOutput(ctx context.Context, request *providerv0.ApplyActio
 		return nil, err
 	}
 	if !response.GetDurable() {
-		return nil, status.Error(codes.FailedPrecondition, "host did not durably commit feature-flags@1")
+		return nil, status.Error(codes.FailedPrecondition, "host did not durably commit the feature flags output")
 	}
 	next := s.nextState(request, nil)
 	next.GetV1().OutputContract = proposal.GetContract()

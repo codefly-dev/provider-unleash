@@ -172,7 +172,7 @@ func (fake *fakeUnleash) ProposeOutput(_ context.Context, request *providerv0.Pr
 	return &providerv0.ProposeOutputResponse{Durable: true, Generation: request.GetProposal().GetTargetGeneration(), Digest: request.GetProposal().GetDigest()}, nil
 }
 
-func TestLifecycleConvergesAndSecondPlanIsEmpty(t *testing.T) {
+func TestLifecycleConvergesRuntimeAndBrowserOutputs(t *testing.T) {
 	fake := &fakeUnleash{}
 	server := testServer(t, fake)
 	providerContext := testProviderContext(testInputs("apply"))
@@ -220,28 +220,51 @@ func TestLifecycleConvergesAndSecondPlanIsEmpty(t *testing.T) {
 	providerContext.Offline.Input["browser_credential_fingerprint"] = publicString(browserFingerprint)
 	desired = testDesired(providerContext.GetOffline().GetInput(), state.GetV1().GetSecretReferences(), "retain")
 	observation = observe(t, server, providerContext, state)
-	second := plan(t, server, providerContext.GetOffline(), desired, observation, &providerv0.OutputTarget{Contract: featureFlagsContract, TargetGeneration: 1})
-	if len(second.GetActions()) != 1 || second.GetActions()[0].GetType() != providerv0.ActionType_ACTION_TYPE_PROJECT_OUTPUT {
-		t.Fatalf("second plan = %v, want only output", second.GetActions())
+	runtimePlan := plan(t, server, providerContext.GetOffline(), desired, observation, &providerv0.OutputTarget{Contract: featureFlagsContract, TargetGeneration: 1})
+	if len(runtimePlan.GetActions()) != 1 || runtimePlan.GetActions()[0].GetType() != providerv0.ActionType_ACTION_TYPE_PROJECT_OUTPUT {
+		t.Fatalf("runtime plan = %v, want only output", runtimePlan.GetActions())
 	}
-	output := second.GetActions()[0].GetOutput()
-	assertFeatureFlagsOutput(t, output)
-	providerContext.Operation.ActionId = second.GetActions()[0].GetActionId()
-	projected, err := server.ApplyAction(context.Background(), &providerv0.ApplyActionRequest{Context: providerContext, Plan: second, Action: second.GetActions()[0], State: state})
+	runtimeOutput := runtimePlan.GetActions()[0].GetOutput()
+	assertFeatureFlagsOutput(t, runtimeOutput, featureFlagsContract)
+	providerContext.Operation.ActionId = runtimePlan.GetActions()[0].GetActionId()
+	runtimeProjected, err := server.ApplyAction(context.Background(), &providerv0.ApplyActionRequest{Context: providerContext, Plan: runtimePlan, Action: runtimePlan.GetActions()[0], State: state})
 	if err != nil {
-		t.Fatalf("apply output: %v", err)
+		t.Fatalf("apply runtime output: %v", err)
 	}
 	if fake.proposals != 1 {
 		t.Fatalf("output proposals = %d, want 1", fake.proposals)
 	}
 
-	empty := plan(t, server, providerContext.GetOffline(), desired, observation, &providerv0.OutputTarget{
-		Contract: featureFlagsContract, TargetGeneration: 1, CurrentGeneration: 1, CurrentDigest: output.GetDigest(),
+	runtimeEmpty := plan(t, server, providerContext.GetOffline(), desired, observation, &providerv0.OutputTarget{
+		Contract: featureFlagsContract, TargetGeneration: 1, CurrentGeneration: 1, CurrentDigest: runtimeOutput.GetDigest(),
 	})
-	if len(empty.GetActions()) != 0 {
-		t.Fatalf("second converged plan has %d actions, want empty", len(empty.GetActions()))
+	if len(runtimeEmpty.GetActions()) != 0 {
+		t.Fatalf("converged runtime plan has %d actions, want empty", len(runtimeEmpty.GetActions()))
 	}
-	if err := validateState(projected.GetNextState()); err != nil {
+
+	browserPlan := plan(t, server, providerContext.GetOffline(), desired, observation, &providerv0.OutputTarget{Contract: featureFlagsBrowserContract, TargetGeneration: 1})
+	if len(browserPlan.GetActions()) != 1 || browserPlan.GetActions()[0].GetActionId() != "feature-flags-browser-project" {
+		t.Fatalf("browser plan = %v, want only browser output", browserPlan.GetActions())
+	}
+	browserOutput := browserPlan.GetActions()[0].GetOutput()
+	assertFeatureFlagsOutput(t, browserOutput, featureFlagsBrowserContract)
+	providerContext.Operation.ActionId = browserPlan.GetActions()[0].GetActionId()
+	browserProjected, err := server.ApplyAction(context.Background(), &providerv0.ApplyActionRequest{
+		Context: providerContext, Plan: browserPlan, Action: browserPlan.GetActions()[0], State: runtimeProjected.GetNextState(),
+	})
+	if err != nil {
+		t.Fatalf("apply browser output: %v", err)
+	}
+	if fake.proposals != 2 {
+		t.Fatalf("output proposals = %d, want 2", fake.proposals)
+	}
+	browserEmpty := plan(t, server, providerContext.GetOffline(), desired, observation, &providerv0.OutputTarget{
+		Contract: featureFlagsBrowserContract, TargetGeneration: 1, CurrentGeneration: 1, CurrentDigest: browserOutput.GetDigest(),
+	})
+	if len(browserEmpty.GetActions()) != 0 {
+		t.Fatalf("converged browser plan has %d actions, want empty", len(browserEmpty.GetActions()))
+	}
+	if err := validateState(browserProjected.GetNextState()); err != nil {
 		t.Fatalf("next state: %v", err)
 	}
 }
@@ -459,6 +482,13 @@ func TestManifestNeverForwardsTokenSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}
+	projectionContracts := map[string]bool{}
+	for _, projection := range providerManifest.Projections {
+		projectionContracts[projection.Contract] = true
+	}
+	if len(projectionContracts) != 2 || !projectionContracts[featureFlagsContract] || !projectionContracts[featureFlagsBrowserContract] {
+		t.Fatalf("feature flags projections = %v", projectionContracts)
+	}
 	for _, schema := range providerManifest.ResponseSchemas {
 		for _, field := range schema.Fields {
 			if field.Selector.Path == "$.tokens[*].secret" && string(field.Disposition) == "FORWARD_SAFE" {
@@ -575,36 +605,51 @@ func actionByID(t *testing.T, plan *providerv0.OrderedPlan, id string) *provider
 	return nil
 }
 
-func assertFeatureFlagsOutput(t *testing.T, output *providerv0.OutputProposal) {
+func assertFeatureFlagsOutput(t *testing.T, output *providerv0.OutputProposal, contractID string) {
 	t.Helper()
-	if output.GetContract() != featureFlagsContract || len(output.GetValues()) != 7 {
+	if output.GetContract() != contractID || len(output.GetValues()) != 5 {
 		t.Fatalf("invalid feature flags output: %v", output)
 	}
-	if got := output.GetValues()["FEATURE_FLAGS_SERVER_CREDENTIAL"].GetOpaqueReference().GetSafeFingerprint(); got != serverFingerprint {
-		t.Fatalf("server credential = %q", got)
+	endpointKey := "FEATURE_FLAGS_SERVER_ENDPOINT"
+	credentialKey := "FEATURE_FLAGS_SERVER_CREDENTIAL"
+	forbiddenEndpointKey := "FEATURE_FLAGS_EDGE_ENDPOINT"
+	forbiddenCredentialKey := "FEATURE_FLAGS_BROWSER_CREDENTIAL"
+	wantEndpoint := endpointReference("server", "server")
+	wantFingerprint := serverFingerprint
+	if contractID == featureFlagsBrowserContract {
+		endpointKey = "FEATURE_FLAGS_EDGE_ENDPOINT"
+		credentialKey = "FEATURE_FLAGS_BROWSER_CREDENTIAL"
+		forbiddenEndpointKey = "FEATURE_FLAGS_SERVER_ENDPOINT"
+		forbiddenCredentialKey = "FEATURE_FLAGS_SERVER_CREDENTIAL"
+		wantEndpoint = endpointReference("edge", "edge")
+		wantFingerprint = browserFingerprint
 	}
-	if got := output.GetValues()["FEATURE_FLAGS_BROWSER_CREDENTIAL"].GetOpaqueReference().GetSafeFingerprint(); got != browserFingerprint {
-		t.Fatalf("browser credential = %q", got)
+	if got := output.GetValues()[endpointKey].GetPublicValue().GetStringValue(); got != wantEndpoint {
+		t.Fatalf("%s = %q, want %q", endpointKey, got, wantEndpoint)
 	}
-	if output.GetValues()["FEATURE_FLAGS_SERVER_CREDENTIAL"].GetPublicValue() != nil {
-		t.Fatal("server credential was projected as public bytes")
+	reference := output.GetValues()[credentialKey].GetOpaqueReference()
+	if got := reference.GetSafeFingerprint(); got != wantFingerprint {
+		t.Fatalf("%s fingerprint = %q", credentialKey, got)
 	}
-	if output.GetValues()["FEATURE_FLAGS_BROWSER_CREDENTIAL"].GetPublicValue() != nil {
-		t.Fatal("browser credential was projected as public bytes")
+	if output.GetValues()[credentialKey].GetPublicValue() != nil {
+		t.Fatalf("%s was projected as public bytes", credentialKey)
+	}
+	if _, exists := output.GetValues()[forbiddenEndpointKey]; exists {
+		t.Fatalf("%s crossed the consumer boundary", forbiddenEndpointKey)
+	}
+	if _, exists := output.GetValues()[forbiddenCredentialKey]; exists {
+		t.Fatalf("%s crossed the consumer boundary", forbiddenCredentialKey)
 	}
 	if _, exists := output.GetValues()["FEATURE_FLAGS_MANAGEMENT_CREDENTIAL"]; exists {
 		t.Fatal("management credential was projected")
 	}
 	registry := configuration.NewRegistry()
-	contract, err := registry.Lookup(featureFlagsContract)
+	if err := registry.ValidateProposal(output); err != nil {
+		t.Fatalf("feature flags proposal validation: %v", err)
+	}
+	contract, err := registry.Lookup(contractID)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if contract.Keys["FEATURE_FLAGS_SERVER_CREDENTIAL"].BrowserExposure != configuration.BrowserDenied ||
-		contract.Keys["FEATURE_FLAGS_SERVER_CREDENTIAL"].Consumer != configuration.ConsumerRuntime ||
-		contract.Keys["FEATURE_FLAGS_BROWSER_CREDENTIAL"].BrowserExposure != configuration.BrowserAllowed ||
-		contract.Keys["FEATURE_FLAGS_BROWSER_CREDENTIAL"].Consumer != configuration.ConsumerBrowser {
-		t.Fatal("feature-flags@1 does not separate browser and server credentials")
 	}
 	values := map[string]configuration.Value{}
 	for name, outputValue := range output.GetValues() {
@@ -624,10 +669,14 @@ func assertFeatureFlagsOutput(t *testing.T, output *providerv0.OutputProposal) {
 		} else {
 			value.String = outputValue.GetPublicValue().GetStringValue()
 		}
+		if declaration.Type == configuration.ValueEndpointReference {
+			value.MutatedBy = configuration.MutatorHost
+			value.Provenance[configuration.ProvenanceHost] = "host-admitted-endpoint"
+		}
 		values[name] = value
 	}
-	if err := registry.Validate(featureFlagsContract, values); err != nil {
-		t.Fatalf("feature-flags@1 contract validation: %v", err)
+	if err := registry.Validate(contractID, values); err != nil {
+		t.Fatalf("%s contract validation: %v", contractID, err)
 	}
 }
 

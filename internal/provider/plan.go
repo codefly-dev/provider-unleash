@@ -249,7 +249,7 @@ func (s *Server) planApply(request *providerv0.PlanRequest, binding *providerv0.
 
 func (s *Server) planOutput(request *providerv0.PlanRequest, binding *providerv0.BindingAddress, in inputs, observed observations) (*providerv0.PlanAction, error) {
 	target := request.GetOutputTarget()
-	if target.GetContract() != featureFlagsContract || target.GetTargetGeneration() == 0 {
+	if target.GetTargetGeneration() == 0 {
 		return nil, nil
 	}
 	marker := ownershipMarker(binding)
@@ -261,28 +261,44 @@ func (s *Server) planOutput(request *providerv0.PlanRequest, binding *providerv0
 	if serverReference == nil || browserReference == nil || serverReference.GetReference() == browserReference.GetReference() {
 		return nil, nil
 	}
-	serverEndpoint := observed.find(resourceEndpoint, "server").GetProviderOwnedFields()["endpoint"].GetStringValue()
-	edgeEndpoint := observed.find(resourceEndpoint, "edge").GetProviderOwnedFields()["endpoint"].GetStringValue()
-	if serverEndpoint == "" || edgeEndpoint == "" {
+	values := map[string]*providerv0.OutputValue{
+		"FEATURE_FLAGS_APPLICATION_ID": publicOutput(in.ApplicationID),
+		"FEATURE_FLAGS_ENVIRONMENT_ID": publicOutput(in.EnvironmentID),
+		"FEATURE_FLAGS_PROVIDER_MODE":  publicOutput(in.ProviderMode),
+	}
+	actionID := ""
+	summary := ""
+	switch target.GetContract() {
+	case featureFlagsContract:
+		serverEndpoint := observed.find(resourceEndpoint, "server").GetProviderOwnedFields()["endpoint"].GetStringValue()
+		if serverEndpoint == "" {
+			return nil, nil
+		}
+		values["FEATURE_FLAGS_SERVER_ENDPOINT"] = publicOutput(serverEndpoint)
+		values["FEATURE_FLAGS_SERVER_CREDENTIAL"] = referenceOutput(serverReference)
+		actionID = "feature-flags-project"
+		summary = "project feature-flags@1 with the opaque server credential"
+	case featureFlagsBrowserContract:
+		edgeEndpoint := observed.find(resourceEndpoint, "edge").GetProviderOwnedFields()["endpoint"].GetStringValue()
+		if edgeEndpoint == "" {
+			return nil, nil
+		}
+		values["FEATURE_FLAGS_EDGE_ENDPOINT"] = publicOutput(edgeEndpoint)
+		values["FEATURE_FLAGS_BROWSER_CREDENTIAL"] = referenceOutput(browserReference)
+		actionID = "feature-flags-browser-project"
+		summary = "project feature-flags-browser@1 with the opaque browser credential"
+	default:
 		return nil, nil
 	}
-	proposal := &providerv0.OutputProposal{Contract: featureFlagsContract, TargetGeneration: target.GetTargetGeneration(), Values: map[string]*providerv0.OutputValue{
-		"FEATURE_FLAGS_SERVER_ENDPOINT":    publicOutput(serverEndpoint),
-		"FEATURE_FLAGS_EDGE_ENDPOINT":      publicOutput(edgeEndpoint),
-		"FEATURE_FLAGS_APPLICATION_ID":     publicOutput(in.ApplicationID),
-		"FEATURE_FLAGS_ENVIRONMENT_ID":     publicOutput(in.EnvironmentID),
-		"FEATURE_FLAGS_PROVIDER_MODE":      publicOutput(in.ProviderMode),
-		"FEATURE_FLAGS_SERVER_CREDENTIAL":  referenceOutput(serverReference),
-		"FEATURE_FLAGS_BROWSER_CREDENTIAL": referenceOutput(browserReference),
-	}}
-	action, err := sdk.NewProjectOutputAction("feature-flags-project", 0, proposal)
+	proposal := &providerv0.OutputProposal{Contract: target.GetContract(), TargetGeneration: target.GetTargetGeneration(), Values: values}
+	action, err := sdk.NewProjectOutputAction(actionID, 0, proposal)
 	if err != nil {
 		return nil, err
 	}
 	if target.GetCurrentGeneration() == target.GetTargetGeneration() && target.GetCurrentDigest() == action.GetOutput().GetDigest() {
 		return nil, nil
 	}
-	action.Summary = "project feature-flags@1 with separate opaque server and browser credentials"
+	action.Summary = summary
 	return action, nil
 }
 

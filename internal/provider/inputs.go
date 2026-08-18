@@ -15,15 +15,16 @@ import (
 )
 
 const (
-	resourceProject            = "unleash.project"
-	resourceEnvironment        = "unleash.environment"
-	resourceProjectEnvironment = "unleash.project-environment"
-	resourceApplication        = "unleash.application"
-	resourceServerToken        = "unleash.server-token"
-	resourceBrowserToken       = "unleash.browser-token"
-	resourceEndpoint           = "unleash.endpoint"
-	featureFlagsContract       = "codefly.dev/configuration/feature-flags@1"
-	actionResource             = "unleash.binding"
+	resourceProject             = "unleash.project"
+	resourceEnvironment         = "unleash.environment"
+	resourceProjectEnvironment  = "unleash.project-environment"
+	resourceApplication         = "unleash.application"
+	resourceServerToken         = "unleash.server-token"
+	resourceBrowserToken        = "unleash.browser-token"
+	resourceEndpoint            = "unleash.endpoint"
+	featureFlagsContract        = configuration.FeatureFlagsContract
+	featureFlagsBrowserContract = configuration.FeatureFlagsBrowserContract
+	actionResource              = "unleash.binding"
 )
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)

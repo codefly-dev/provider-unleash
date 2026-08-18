@@ -1,14 +1,15 @@
 # provider-unleash
 
-`provider-unleash` is the bounded Codefly provider for
-`codefly.dev/configuration/feature-flags@1`.
+`provider-unleash` is the bounded Codefly provider for the server-side
+`codefly.dev/configuration/feature-flags@1` and browser-side
+`codefly.dev/configuration/feature-flags-browser@1` contracts.
 
 It resolves the `admin`, `server`, and `edge` semantic endpoints supplied by the
 host, manages one declared project/environment/application binding and its
-backend/frontend tokens, and projects only the admitted runtime endpoints,
-application/environment identities, provider mode, and opaque runtime token
-references. The management credential is used only through the host broker and
-is never part of provider input, state, receipts, or output.
+backend/frontend tokens, and projects only the admitted semantic endpoint
+references, application/environment identities, provider mode, and opaque
+runtime token references. The management credential is used only through the
+host broker and is never part of provider input, state, receipts, or output.
 
 Remote deletion defaults to retain. `delete-owned` teardown is accepted only
 for resources carrying the exact deterministic binding stamp; imports likewise

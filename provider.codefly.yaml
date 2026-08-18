@@ -347,6 +347,8 @@ response_schemas:
 projections:
   - id: feature-flags
     contract: codefly.dev/configuration/feature-flags@1
+  - id: feature-flags-browser
+    contract: codefly.dev/configuration/feature-flags-browser@1
 
 sandbox:
   network: deny
