@@ -616,6 +616,8 @@ func assertFeatureFlagsOutput(t *testing.T, output *providerv0.OutputProposal, c
 	forbiddenCredentialKey := "FEATURE_FLAGS_BROWSER_CREDENTIAL"
 	wantEndpoint := endpointReference("server", "server")
 	wantFingerprint := serverFingerprint
+	wantReference := "secret://unleash/server"
+	consumer := configuration.ConsumerRuntime
 	if contractID == featureFlagsBrowserContract {
 		endpointKey = "FEATURE_FLAGS_EDGE_ENDPOINT"
 		credentialKey = "FEATURE_FLAGS_BROWSER_CREDENTIAL"
@@ -623,11 +625,16 @@ func assertFeatureFlagsOutput(t *testing.T, output *providerv0.OutputProposal, c
 		forbiddenCredentialKey = "FEATURE_FLAGS_SERVER_CREDENTIAL"
 		wantEndpoint = endpointReference("edge", "edge")
 		wantFingerprint = browserFingerprint
+		wantReference = "secret://unleash/browser"
+		consumer = configuration.ConsumerBrowser
 	}
 	if got := output.GetValues()[endpointKey].GetPublicValue().GetStringValue(); got != wantEndpoint {
 		t.Fatalf("%s = %q, want %q", endpointKey, got, wantEndpoint)
 	}
 	reference := output.GetValues()[credentialKey].GetOpaqueReference()
+	if got := reference.GetReference(); got != wantReference {
+		t.Fatalf("%s reference = %q, want %q", credentialKey, got, wantReference)
+	}
 	if got := reference.GetSafeFingerprint(); got != wantFingerprint {
 		t.Fatalf("%s fingerprint = %q", credentialKey, got)
 	}
@@ -666,6 +673,8 @@ func assertFeatureFlagsOutput(t *testing.T, output *providerv0.OutputProposal, c
 		}
 		if outputValue.GetOpaqueReference() != nil {
 			value.OpaqueReference = outputValue.GetOpaqueReference().GetReference()
+			value.SafeFingerprint = outputValue.GetOpaqueReference().GetSafeFingerprint()
+			value.Provenance[configuration.ProvenanceHost] = value.SafeFingerprint
 		} else {
 			value.String = outputValue.GetPublicValue().GetStringValue()
 		}
@@ -675,8 +684,18 @@ func assertFeatureFlagsOutput(t *testing.T, output *providerv0.OutputProposal, c
 		}
 		values[name] = value
 	}
-	if err := registry.Validate(contractID, values); err != nil {
+	validation := configuration.ValidationContext{
+		Consumer: consumer,
+		Attestations: configuration.HostAttestations{
+			OpaqueReferences: []*providerv0.OpaqueReference{runtimeReference(wantReference, wantFingerprint)},
+		},
+	}
+	if err := registry.Validate(contractID, values, validation); err != nil {
 		t.Fatalf("%s contract validation: %v", contractID, err)
+	}
+	validation.Attestations = configuration.HostAttestations{}
+	if err := registry.Validate(contractID, values, validation); err == nil {
+		t.Fatal("unattested feature flag credential was accepted")
 	}
 }
 
